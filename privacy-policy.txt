@@ -1,0 +1,18 @@
+Privacy Policy for Zhen Chrome Extension
+
+Last updated: July 16, 2026
+
+Zhen ("we", "our", or "the extension") is a minimalist web translation tool. We are committed to protecting your privacy.
+
+1. Data Collection and Usage
+We do NOT collect, store, or transmit any personally identifiable information, browsing history, cookies, or credentials.
+The extension only reads the text content of the specific web page you choose to translate, solely for the purpose of sending it to the Google Translate service to obtain the translated results.
+
+2. Data Storage
+We use the browser's local storage mechanism solely to temporarily cache previously translated text segments. This cache is kept locally on your device to improve translation speed and is never transmitted to our servers.
+
+3. Third-Party Services
+The text to be translated is securely transmitted to Google Translate API. We do not control Google's privacy practices, but the data is sent anonymously without user identifiers.
+
+4. Contact
+If you have any questions about this Privacy Policy, please contact the developer via the Chrome Web Store support tab.

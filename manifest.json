@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Zhen · 国翻",
+  "version": "2.0.0",
+  "description": "极简英中网页翻译：一键翻译，保留原生排版。",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [],
+  "action": {
+    "default_icon": {
+      "16": "icons/zh-16.png",
+      "48": "icons/zh-48.png",
+      "128": "icons/zh-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/logo-16.png",
+    "48": "icons/logo-48.png",
+    "128": "icons/logo-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "translate-page": {
+      "suggested_key": {
+        "default": "Alt+Z",
+        "mac": "Alt+Z"
+      },
+      "description": "翻译当前页面"
+    }
+  }
+}
