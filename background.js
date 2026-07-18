@@ -12,21 +12,21 @@
  */
 
 // ── Backend Config ───────────────────────────────────────────────────
-const BACKEND_URL = ''; // Will be set when Vercel backend is deployed
+const BACKEND_URL = 'https://zhen-backend-api.vercel.app';
 
 // ── User State ───────────────────────────────────────────────────────
 const DEFAULT_STATE = {
   deviceId: null,
   tier: 'free',           // 'free' | 'basic' | 'premium'
   usageCount: 0,
-  premiumDismissed: false
+  extendedTrial: false    // true after user clicks "还想再体验体验"
 };
 
 async function getUserState() {
   try {
     const { zhenState } = await chrome.storage.sync.get('zhenState');
     if (!zhenState || !zhenState.deviceId) {
-      const newState = { ...DEFAULT_STATE, deviceId: crypto.randomUUID() };
+      const newState = { ...DEFAULT_STATE, deviceId: crypto.randomUUID(), usageCount: 0 };
       await chrome.storage.sync.set({ zhenState: newState });
       return newState;
     }
@@ -117,8 +117,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'DISMISS_PREMIUM') {
-    updateUserState({ premiumDismissed: true }).then(state => sendResponse(state));
+  if (message.type === 'EXTEND_TRIAL') {
+    updateUserState({ extendedTrial: true }).then(state => sendResponse(state));
     return true;
   }
 
@@ -234,30 +234,20 @@ async function translateWithGoogle(texts) {
   if (texts.length === 0) return [];
   if (texts.length === 1) return fallbackConcurrentGoogle(texts);
 
-  const separator = '\n\n|||\n\n';
-  const joined = texts.join(separator);
-
   try {
-    const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t';
-    const body = new URLSearchParams({ q: joined });
-
+    const url = `${BACKEND_URL}/api/google-proxy`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts })
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
 
-    let translatedStr = '';
-    for (const seg of data[0]) {
-      if (seg[0]) translatedStr += seg[0];
+    if (data.translations && data.translations.length === texts.length) {
+      return data.translations;
     }
-
-    const results = translatedStr.split(/\s*(?:\|\|\||\|\||\| \| \|)\s*/);
-    if (results.length === texts.length) return results;
-
     return fallbackConcurrentGoogle(texts);
   } catch (err) {
     return fallbackConcurrentGoogle(texts);
@@ -275,14 +265,18 @@ async function fallbackConcurrentGoogle(texts) {
       const text = texts[idx];
       if (!text.trim()) { results[idx] = text; continue; }
 
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`;
+      const url = `${BACKEND_URL}/api/google-proxy`;
       let retries = 2;
       while (retries >= 0) {
         try {
-          const response = await fetch(url);
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ texts: [text] })
+          });
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
-          results[idx] = data[0].map(seg => seg[0]).join('');
+          results[idx] = data.translations[0];
           break;
         } catch (err) {
           retries--;

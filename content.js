@@ -1,12 +1,13 @@
 /**
  * Zhen · 国翻 — Content Script
  *
- * V2 Architecture:
+ * V3 Architecture:
  *  - Chrome Translator API (local AI) for free/basic users
  *  - Google Translate API fallback for unsupported browsers
  *  - LLM proxy (via background.js) for premium users
- *  - Usage tracking + paywall at 30 uses
- *  - Premium upsell prompt every 50 uses (for basic users)
+ *  - Two-stage paywall:
+ *      Stage 1 (30 uses): gentle prompt with "try more" option (+20 uses)
+ *      Stage 2 (50 uses): final prompt, pay or cancel
  *  - Smart skip: translate="no", contenteditable, decorative fonts
  */
 
@@ -67,8 +68,8 @@
     '-apple-system', 'blinkmacsystemfont', 'segoe ui', 'ubuntu', 'cantarell', 'inter'
   ]);
 
-  const TRIAL_LIMIT = 30;
-  const PREMIUM_PROMPT_INTERVAL = 50; // show every 50 uses
+  const TRIAL_LIMIT_FIRST = 30;   // First paywall
+  const TRIAL_LIMIT_FINAL = 50;   // Final paywall (30 + 20 extended)
 
   // ── Smart Skip Detection ────────────────────────────────────────────
   function shouldSkipTranslation(element) {
@@ -104,6 +105,7 @@
       @keyframes __zhen-spin { to { transform: rotate(360deg); } }
       @keyframes __zhen-fadein { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes __zhen-fadeout { from { opacity: 1; } to { opacity: 0; } }
+      @keyframes __zhen-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
 
       .__zhen-inline-spinner {
         display: inline-block;
@@ -128,12 +130,15 @@
       }
       .__zhen-paywall-card {
         background: #fff; border-radius: 20px;
-        padding: 48px 40px; max-width: 400px; width: 90%;
+        padding: 48px 40px; max-width: 420px; width: 90%;
         text-align: center;
         box-shadow: 0 25px 60px rgba(0,0,0,0.3);
       }
+      .__zhen-paywall-emoji {
+        font-size: 48px; margin-bottom: 16px;
+      }
       .__zhen-paywall-title {
-        font-size: 24px; font-weight: 700; color: #111;
+        font-size: 22px; font-weight: 700; color: #111;
         margin: 0 0 8px;
       }
       .__zhen-paywall-subtitle {
@@ -146,7 +151,7 @@
       }
       .__zhen-paywall-price-note {
         font-size: 13px; color: #999;
-        margin: 0 0 28px;
+        margin: 0 0 24px;
       }
       .__zhen-paywall-qr {
         width: 200px; height: 200px;
@@ -155,56 +160,50 @@
         display: flex; align-items: center; justify-content: center;
         color: #999; font-size: 14px;
       }
+      .__zhen-paywall-qr img {
+        width: 100%; height: 100%; border-radius: 12px; object-fit: contain;
+      }
       .__zhen-paywall-hint {
         font-size: 13px; color: #aaa;
         margin: 0 0 24px;
       }
-      .__zhen-paywall-later {
+      .__zhen-paywall-actions {
+        display: flex; flex-direction: column; gap: 10px; align-items: center;
+      }
+      .__zhen-paywall-btn-primary {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #fff; border: none;
+        padding: 12px 32px; border-radius: 12px;
+        font-size: 16px; font-weight: 600;
+        cursor: pointer; transition: all 0.2s;
+        width: 100%; max-width: 280px;
+      }
+      .__zhen-paywall-btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+      }
+      .__zhen-paywall-btn-secondary {
+        background: #f0f0f5; color: #555; border: none;
+        padding: 12px 32px; border-radius: 12px;
+        font-size: 15px; font-weight: 500;
+        cursor: pointer; transition: all 0.2s;
+        width: 100%; max-width: 280px;
+      }
+      .__zhen-paywall-btn-secondary:hover {
+        background: #e8e8f0; color: #333;
+      }
+      .__zhen-paywall-btn-cancel {
         background: none; border: none;
-        font-size: 14px; color: #999;
+        font-size: 14px; color: #bbb;
         cursor: pointer; padding: 8px 20px;
         transition: color 0.2s;
       }
-      .__zhen-paywall-later:hover { color: #333; }
+      .__zhen-paywall-btn-cancel:hover { color: #666; }
 
-      /* ── Premium Prompt Bar ── */
-      .__zhen-premium-bar {
-        position: fixed; bottom: 0; left: 0; right: 0;
-        background: linear-gradient(135deg, #1a1a2e, #16213e);
-        color: #fff; padding: 16px 24px;
-        z-index: 2147483646;
-        display: flex; align-items: center; justify-content: space-between;
-        animation: __zhen-fadein 0.4s ease-out;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-        box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+      /* ── QR Payment View (replaces initial card content) ── */
+      .__zhen-paywall-qr-view {
+        animation: __zhen-fadein 0.3s ease-out;
       }
-      .__zhen-premium-bar.--fadeout {
-        animation: __zhen-fadeout 0.3s ease-in forwards;
-      }
-      .__zhen-premium-content { flex: 1; margin-right: 16px; }
-      .__zhen-premium-label {
-        font-size: 13px; color: rgba(255,255,255,0.6);
-        margin: 0 0 6px;
-      }
-      .__zhen-premium-compare {
-        font-size: 14px; line-height: 1.5;
-      }
-      .__zhen-premium-free { color: rgba(255,255,255,0.5); }
-      .__zhen-premium-pro { color: #a5f3fc; font-weight: 600; }
-      .__zhen-premium-actions { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
-      .__zhen-premium-upgrade {
-        background: #6366f1; color: #fff; border: none;
-        padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
-        cursor: pointer; transition: background 0.2s;
-      }
-      .__zhen-premium-upgrade:hover { background: #4f46e5; }
-      .__zhen-premium-dismiss {
-        background: none; border: none;
-        color: rgba(255,255,255,0.4); font-size: 13px;
-        cursor: pointer; padding: 8px;
-        transition: color 0.2s;
-      }
-      .__zhen-premium-dismiss:hover { color: rgba(255,255,255,0.8); }
     `;
     document.head.appendChild(style);
   }
@@ -442,93 +441,177 @@
     await Promise.all(workers);
   }
 
-  // ── Paywall ─────────────────────────────────────────────────────────
-  function injectPaywall() {
-    if (document.querySelector('.__zhen-paywall-overlay')) return;
+  // ── Paywall: Two-Stage System ───────────────────────────────────────
 
-    const overlay = document.createElement('div');
-    overlay.className = '__zhen-paywall-overlay';
-    overlay.innerHTML = `
-      <div class="__zhen-paywall-card">
-        <div class="__zhen-paywall-title">Zhen · 国翻</div>
-        <div class="__zhen-paywall-subtitle">
-          你已经用 Zhen 翻译了 ${TRIAL_LIMIT} 个网页 🎉<br>
-          看来它对你很有帮助！
-        </div>
-        <div class="__zhen-paywall-price">¥9.9</div>
-        <div class="__zhen-paywall-price-note">一次付费，终身使用</div>
-        <div class="__zhen-paywall-qr" id="__zhen-qr">
-          支付功能即将上线
-        </div>
-        <div class="__zhen-paywall-hint">支付后自动激活，无需任何操作</div>
-        <button class="__zhen-paywall-later" id="__zhen-later">稍后再说</button>
-      </div>
-    `;
+  /**
+   * Cleanup helper: removes overlay and clears polling interval
+   */
+  function cleanupPaywall() {
+    const overlay = document.querySelector('.__zhen-paywall-overlay');
+    if (overlay) overlay.remove();
+    if (window.__zhenPollInterval) {
+      clearInterval(window.__zhenPollInterval);
+      window.__zhenPollInterval = null;
+    }
+  }
 
-    document.body.appendChild(overlay);
-
-    document.getElementById('__zhen-later').addEventListener('click', () => {
-      overlay.remove();
-    });
-
-    // Start polling for activation
+  /**
+   * Start polling the backend for payment confirmation.
+   * Once confirmed, closes overlay and triggers translation.
+   */
+  function startPaymentPolling() {
+    if (window.__zhenPollInterval) clearInterval(window.__zhenPollInterval);
     let pollCount = 0;
-    const pollInterval = setInterval(async () => {
+    window.__zhenPollInterval = setInterval(async () => {
       pollCount++;
-      if (pollCount > 200) { clearInterval(pollInterval); return; } // stop after ~10 min
+      if (pollCount > 200) { clearInterval(window.__zhenPollInterval); return; } // ~10 min timeout
       try {
         const result = await chrome.runtime.sendMessage({ type: 'CHECK_ACTIVATION' });
         if (result?.tier === 'basic' || result?.tier === 'premium') {
-          clearInterval(pollInterval);
-          overlay.remove();
+          cleanupPaywall();
           await chrome.runtime.sendMessage({ type: 'ACTIVATE_TIER', tier: result.tier });
-          translatePage(); // auto-translate after activation
+          translatePage(); // auto-translate after payment
         }
       } catch (e) {}
     }, 3000);
   }
 
-  // ── Premium Prompt ──────────────────────────────────────────────────
-  function showPremiumPrompt() {
-    if (document.querySelector('.__zhen-premium-bar')) return;
-
-    const bar = document.createElement('div');
-    bar.className = '__zhen-premium-bar';
-    bar.innerHTML = `
-      <div class="__zhen-premium-content">
-        <div class="__zhen-premium-label">✨ 进阶翻译，更准确更自然</div>
-        <div class="__zhen-premium-compare">
-          <span class="__zhen-premium-free">基础版：机器翻译</span>
-          &nbsp;→&nbsp;
-          <span class="__zhen-premium-pro">进阶版：AI 大模型翻译，理解上下文</span>
+  /**
+   * Show the QR payment view inside the existing paywall card.
+   * Replaces the card's inner content with QR code + polling.
+   */
+  function showQRPaymentView(card) {
+    card.innerHTML = `
+      <div class="__zhen-paywall-qr-view">
+        <div class="__zhen-paywall-emoji">💳</div>
+        <div class="__zhen-paywall-title">Zhen · 国翻</div>
+        <div class="__zhen-paywall-price">¥9.9</div>
+        <div class="__zhen-paywall-price-note">一次付费，终身使用</div>
+        <div class="__zhen-paywall-qr" id="__zhen-qr">
+          <span class="__zhen-inline-spinner" style="border-top-color:#999;width:24px;height:24px;"></span>
         </div>
-      </div>
-      <div class="__zhen-premium-actions">
-        <button class="__zhen-premium-upgrade" id="__zhen-upgrade">¥6.9/月 升级</button>
-        <button class="__zhen-premium-dismiss" id="__zhen-dismiss-premium">不再提示</button>
+        <div class="__zhen-paywall-hint">微信 / 支付宝扫码 · 支付后自动激活</div>
+        <div class="__zhen-paywall-actions">
+          <button class="__zhen-paywall-btn-cancel" id="__zhen-qr-cancel">取消</button>
+        </div>
       </div>
     `;
 
-    document.body.appendChild(bar);
-
-    // Auto-dismiss after 8 seconds
-    const autoTimer = setTimeout(() => {
-      bar.classList.add('--fadeout');
-      setTimeout(() => bar.remove(), 300);
-    }, 8000);
-
-    document.getElementById('__zhen-upgrade').addEventListener('click', () => {
-      clearTimeout(autoTimer);
-      bar.remove();
-      // TODO: Open premium payment page
-      // For now, show paywall with premium plan
+    // Fetch QR code from backend
+    chrome.runtime.sendMessage({ type: 'GET_USER_STATE' }).then(state => {
+      fetch('https://zhen-backend-api.vercel.app/api/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: state.deviceId, plan: 'basic' })
+      }).then(res => res.json()).then(data => {
+        const qrEl = document.getElementById('__zhen-qr');
+        if (qrEl && data.qrCodeUrl) {
+          qrEl.innerHTML = `<img src="${data.qrCodeUrl}" alt="付款二维码">`;
+        } else if (qrEl) {
+          qrEl.innerText = '生成二维码失败';
+        }
+      }).catch(() => {
+        const qrEl = document.getElementById('__zhen-qr');
+        if (qrEl) qrEl.innerText = '网络连接失败';
+      });
     });
 
-    document.getElementById('__zhen-dismiss-premium').addEventListener('click', () => {
-      clearTimeout(autoTimer);
-      bar.classList.add('--fadeout');
-      setTimeout(() => bar.remove(), 300);
-      chrome.runtime.sendMessage({ type: 'DISMISS_PREMIUM' }).catch(() => {});
+    // Cancel button
+    document.getElementById('__zhen-qr-cancel')?.addEventListener('click', () => {
+      cleanupPaywall();
+    });
+
+    // Start polling for payment confirmation
+    startPaymentPolling();
+  }
+
+  /**
+   * Stage 1 Paywall — shown at TRIAL_LIMIT_FIRST (30th translation)
+   * Three options:
+   *  1. "还想再体验体验" → extend trial by 20 more, then translate
+   *  2. "值得买断 ¥9.9"  → show QR payment
+   *  3. Close (×)        → don't translate
+   */
+  function showFirstPaywall() {
+    if (document.querySelector('.__zhen-paywall-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = '__zhen-paywall-overlay';
+    overlay.innerHTML = `
+      <div class="__zhen-paywall-card" id="__zhen-paywall-card">
+        <div class="__zhen-paywall-emoji">🎉</div>
+        <div class="__zhen-paywall-title">Zhen 已陪你翻译了 ${TRIAL_LIMIT_FIRST} 个网页！</div>
+        <div class="__zhen-paywall-subtitle">
+          看来它对你真的很有帮助～<br>
+          只需 <strong style="color:#6366f1;">¥9.9</strong> 即可永久解锁，无限翻译。
+        </div>
+        <div class="__zhen-paywall-actions">
+          <button class="__zhen-paywall-btn-primary" id="__zhen-buy-now">值得买断 ¥9.9</button>
+          <button class="__zhen-paywall-btn-secondary" id="__zhen-try-more">🤔 还想再体验体验</button>
+          <button class="__zhen-paywall-btn-cancel" id="__zhen-close-first">暂时不用</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // "值得买断" → show QR payment in same card
+    document.getElementById('__zhen-buy-now').addEventListener('click', () => {
+      const card = document.getElementById('__zhen-paywall-card');
+      if (card) showQRPaymentView(card);
+    });
+
+    // "还想再体验体验" → extend trial + translate immediately
+    document.getElementById('__zhen-try-more').addEventListener('click', async () => {
+      overlay.remove();
+      await chrome.runtime.sendMessage({ type: 'EXTEND_TRIAL' });
+      translatePage(); // immediately translate for the user
+    });
+
+    // "暂时不用" → close, don't translate
+    document.getElementById('__zhen-close-first').addEventListener('click', () => {
+      cleanupPaywall();
+    });
+  }
+
+  /**
+   * Stage 2 Paywall — shown at TRIAL_LIMIT_FINAL (50th translation)
+   * Two options:
+   *  1. "值得买断 ¥9.9" → show QR payment
+   *  2. "取消"          → don't translate
+   */
+  function showFinalPaywall() {
+    if (document.querySelector('.__zhen-paywall-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = '__zhen-paywall-overlay';
+    overlay.innerHTML = `
+      <div class="__zhen-paywall-card" id="__zhen-paywall-card">
+        <div class="__zhen-paywall-emoji">✨</div>
+        <div class="__zhen-paywall-title">免费体验已结束</div>
+        <div class="__zhen-paywall-subtitle">
+          你已经用 Zhen 翻译了 ${TRIAL_LIMIT_FINAL} 个网页，<br>
+          相信它已经成为你的得力助手。<br><br>
+          <strong style="color:#6366f1;">¥9.9 一次买断，终身无限翻译</strong>
+        </div>
+        <div class="__zhen-paywall-actions">
+          <button class="__zhen-paywall-btn-primary" id="__zhen-buy-final">值得买断 ¥9.9</button>
+          <button class="__zhen-paywall-btn-cancel" id="__zhen-cancel-final">取消</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // "值得买断" → show QR payment
+    document.getElementById('__zhen-buy-final').addEventListener('click', () => {
+      const card = document.getElementById('__zhen-paywall-card');
+      if (card) showQRPaymentView(card);
+    });
+
+    // "取消" → close, don't translate
+    document.getElementById('__zhen-cancel-final').addEventListener('click', () => {
+      cleanupPaywall();
     });
   }
 
@@ -541,13 +624,21 @@
     try {
       userState = await chrome.runtime.sendMessage({ type: 'GET_USER_STATE' });
     } catch (e) {
-      userState = { tier: 'free', usageCount: 0, premiumDismissed: false };
+      userState = { tier: 'free', usageCount: 0, extendedTrial: false };
     }
 
     // ── Step 2: Paywall check for free users ──
-    if (userState.tier === 'free' && userState.usageCount >= TRIAL_LIMIT) {
-      injectPaywall();
-      return;
+    if (userState.tier === 'free') {
+      // Final paywall: used up all extended trial
+      if (userState.usageCount >= TRIAL_LIMIT_FINAL) {
+        showFinalPaywall();
+        return;
+      }
+      // First paywall: reached initial limit, hasn't extended yet
+      if (userState.usageCount >= TRIAL_LIMIT_FIRST && !userState.extendedTrial) {
+        showFirstPaywall();
+        return;
+      }
     }
 
     // ── Step 3: Translate ──
@@ -585,15 +676,7 @@
 
       // ── Step 4: Increment usage ──
       try {
-        const newState = await chrome.runtime.sendMessage({ type: 'INCREMENT_USAGE' });
-
-        // ── Step 5: Premium prompt for basic users ──
-        if (newState.tier === 'basic' &&
-            !newState.premiumDismissed &&
-            newState.usageCount > 0 &&
-            newState.usageCount % PREMIUM_PROMPT_INTERVAL === 0) {
-          setTimeout(() => showPremiumPrompt(), 2000);
-        }
+        await chrome.runtime.sendMessage({ type: 'INCREMENT_USAGE' });
       } catch (e) {}
 
     } catch (err) {
@@ -613,7 +696,6 @@
     }
 
     document.querySelectorAll('.__zhen-inline-spinner').forEach(el => el.remove());
-    document.querySelectorAll('.__zhen-premium-bar').forEach(el => el.remove());
 
     window.__zhenOriginals.clear();
     window.__zhenTranslatedNodes = new WeakSet();
