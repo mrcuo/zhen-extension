@@ -105,10 +105,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'INCREMENT_USAGE') {
-    getUserState().then(async (state) => {
-      const newState = await updateUserState({ usageCount: state.usageCount + 1 });
-      sendResponse(newState);
-    });
+    (async () => {
+      try {
+        const pageUrl = message.url || '';
+        // Normalize URL: strip hash fragment
+        const normalizedUrl = pageUrl.split('#')[0];
+
+        // Check if this URL was already counted in this session
+        const { countedUrls = [] } = await chrome.storage.session.get('countedUrls');
+        if (normalizedUrl && countedUrls.includes(normalizedUrl)) {
+          // Already counted this page, skip increment
+          const state = await getUserState();
+          sendResponse(state);
+          return;
+        }
+
+        // New page — increment count and record URL
+        const state = await getUserState();
+        const newState = await updateUserState({ usageCount: state.usageCount + 1 });
+        countedUrls.push(normalizedUrl);
+        // Keep only last 500 URLs to avoid bloat
+        if (countedUrls.length > 500) countedUrls.splice(0, countedUrls.length - 500);
+        await chrome.storage.session.set({ countedUrls });
+        sendResponse(newState);
+      } catch (e) {
+        console.error('[Zhen] INCREMENT_USAGE error:', e);
+        sendResponse(await getUserState());
+      }
+    })();
     return true;
   }
 
