@@ -613,7 +613,7 @@
 
     // Fetch QR code
     chrome.runtime.sendMessage({ type: 'GET_USER_STATE' }).then(state => {
-      fetch('https://zhen-backend-api.vercel.app/api/create-order', {
+      fetch('https://zhen-backend.vercel.app/api/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId: state.deviceId, plan: 'basic' })

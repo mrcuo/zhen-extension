@@ -12,7 +12,7 @@
  */
 
 // ── Backend Config ───────────────────────────────────────────────────
-const BACKEND_URL = 'https://zhen-backend-api.vercel.app';
+const BACKEND_URL = 'https://zhen-backend.vercel.app';
 
 // ── User State ───────────────────────────────────────────────────────
 const DEFAULT_STATE = {
