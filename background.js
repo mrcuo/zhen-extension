@@ -208,19 +208,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = sender.tab.id;
     const isTranslated = message.state === 'translated' || message.state === 'translating';
 
-    chrome.action.setIcon({
-      tabId,
-      path: {
-        "16": isTranslated ? "icons/en-16.png" : "icons/zh-16.png",
-        "48": isTranslated ? "icons/en-48.png" : "icons/zh-48.png",
-        "128": isTranslated ? "icons/en-128.png" : "icons/zh-128.png"
-      }
+    getUserState().then(state => {
+      let prefix = '';
+      if (state.tier === 'pro' || state.tier === 'basic') prefix = '-pro';
+      if (state.tier === 'vip' || state.tier === 'subscription') prefix = '-vip';
+
+      const lang = isTranslated ? 'en' : 'zh';
+      
+      chrome.action.setIcon({
+        tabId,
+        path: {
+          "16": `icons/${lang}${prefix}-16.png`,
+          "48": `icons/${lang}${prefix}-48.png`,
+          "128": `icons/${lang}${prefix}-128.png`
+        }
+      });
+      chrome.action.setTitle({
+        tabId,
+        title: isTranslated ? "恢复原文 (EN)" : "翻译此页 (ZH)"
+      });
     });
-    chrome.action.setTitle({
-      tabId,
-      title: isTranslated ? "恢复原文 (EN)" : "翻译此页 (ZH)"
-    });
-    return false;
+    return true; // We use async reply or fire-and-forget in this case
   }
 });
 
