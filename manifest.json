@@ -9,6 +9,12 @@
     "storage"
   ],
   "host_permissions": [],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_icon": {
       "16": "icons/zh-16.png",

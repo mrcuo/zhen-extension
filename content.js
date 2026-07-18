@@ -182,15 +182,18 @@
         animation: __zhen-shimmer 3s ease-in-out infinite;
       }
       .__zhen-paywall-logo {
-        width: 48px; height: 48px;
+        width: 56px; height: 56px;
         background: rgba(255,255,255,0.2);
         border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
         margin: 0 auto 12px;
-        font-size: 24px;
         backdrop-filter: blur(8px);
         border: 1px solid rgba(255,255,255,0.25);
         animation: __zhen-float 3s ease-in-out infinite;
+      }
+      .__zhen-paywall-logo img {
+        width: 48px; height: 48px;
+        border-radius: 10px;
       }
       .__zhen-paywall-brand {
         font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.9);
@@ -447,12 +450,6 @@
         if (parent.closest('.__zhen-paywall-overlay')) return NodeFilter.FILTER_REJECT;
         if (shouldSkipTranslation(parent)) return NodeFilter.FILTER_REJECT;
         if (isCustomFontText(parent)) return NodeFilter.FILTER_REJECT;
-        if (parent.offsetParent === null && parent.tagName !== 'BODY') {
-          try {
-            const style = window.getComputedStyle(parent);
-            if (style.display === 'none' || style.visibility === 'hidden') return NodeFilter.FILTER_REJECT;
-          } catch (e) {}
-        }
         if (window.__zhenTranslatedNodes.has(node)) return NodeFilter.FILTER_REJECT;
         if (isIcon(node)) return NodeFilter.FILTER_REJECT;
         if (!isTranslatable(node.textContent)) return NodeFilter.FILTER_REJECT;
@@ -651,7 +648,7 @@
     overlay.innerHTML = `
       <div class="__zhen-paywall-card">
         <div class="__zhen-paywall-header">
-          <div class="__zhen-paywall-logo">译</div>
+          <div class="__zhen-paywall-logo"><img src="${chrome.runtime.getURL('icons/logo-48.png')}" alt="Logo"></div>
           <p class="__zhen-paywall-brand">ZHEN · 国翻</p>
         </div>
         <div class="__zhen-paywall-body" id="__zhen-paywall-body">
@@ -712,7 +709,7 @@
     overlay.innerHTML = `
       <div class="__zhen-paywall-card">
         <div class="__zhen-paywall-header">
-          <div class="__zhen-paywall-logo">译</div>
+          <div class="__zhen-paywall-logo"><img src="${chrome.runtime.getURL('icons/logo-48.png')}" alt="Logo"></div>
           <p class="__zhen-paywall-brand">ZHEN · 国翻</p>
         </div>
         <div class="__zhen-paywall-body" id="__zhen-paywall-body">
@@ -879,11 +876,11 @@
       }
       if (pendingNodes.length > 0) {
         clearTimeout(timer);
-        timer = setTimeout(processMutations, 1000);
+        timer = setTimeout(processMutations, 150);
       }
     });
 
-    window.__zhenMutationObserver.observe(document.body, { childList: true, subtree: true });
+    window.__zhenMutationObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
   // ── Auto-start ──────────────────────────────────────────────────────
